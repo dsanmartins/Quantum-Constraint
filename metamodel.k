@@ -1,33 +1,35 @@
 # ============================================================
 # metamodel.k
 # ------------------------------------------------------------
-# Core metamodel for UML-like quantum circuit modeling.
+# Core metamodel for quantum circuit modeling.
 #
-# This file contains only:
-#   - abstract syntax
-#   - typing
-#   - arity checks
-#   - uniqueness checks
-#   - reference integrity
-#   - basic control-flow anchoring
+# This file is aligned with the paper's Table II and Section
+# III-B. It implements the structural constraints:
+#   - C1 Flow Consistency
+#   - C2 Node Existence
+#   - C3 Qubit Binding
+#   - C4 Control-Target Disjointness
+#   - C5 Resource Locality
+#   - C8 Control-Flow Anchoring
 #
-# It intentionally does NOT contain higher-level behavioral
-# constraints such as:
-#   - no reuse after measurement without reset
-#   - ancilla cleanup
-#   - no parallel conflicts
-#   - semantic correctness of teleportation
+# Behavioral constraints are intentionally externalized to
+# constraints.k:
+#   - C6 Measurement Integrity
+#   - C7 Classical Dependency Safety
 # ============================================================
 
-
 # ============================================================
-# Basic domain elements
+# Enumerations reflected in the paper
+# ------------------------------------------------------------
+# QubitKind: data | ancilla
+# BasisKind: X | Y | Z
+# OrderingKind: little | big
 # ============================================================
 
 schema Qubit:
     id: str
     index: int
-    kind?: "data" | "ancilla" | "auxiliary" | "target" = "data"
+    kind?: "data" | "ancilla" = "data"
 
     check:
         index >= 0, "Qubit index must be non-negative"
@@ -62,36 +64,35 @@ schema GateNode:
     gateType: "H" | "X" | "Y" | "Z" | "CNOT" | "CZ" | "SWAP" | "Custom"
     targets: [str]
     controls?: [str] = []
-
-    # Optional classical dependencies for hybrid quantum-classical circuits
     classicalDependsOn?: [str] = []
-
-    # Optional metadata
     phaseExact?: bool = True
     decompositionName?: str
 
     check:
-        len(targets) >= 1, "A gate must have at least one target"
-        len({t for t in targets}) == len(targets), "Gate targets must be unique"
-        len({c for c in controls}) == len(controls), "Gate controls must be unique"
+        # C3: every operation must be bound to at least one qubit
+        len(targets) + len(controls) >= 1, \
+            "C3 Violation: Every quantum operation must reference at least one qubit resource"
+
+        len({t for t in targets}) == len(targets), \
+            "Gate targets must be unique"
+        len({c for c in controls}) == len(controls), \
+            "Gate controls must be unique"
         len({d for d in classicalDependsOn}) == len(classicalDependsOn), \
             "Classical dependencies must be unique"
 
-        # Single-qubit gates
+        # Lightweight gate-shape checks used by the case study.
         (gateType not in ["H", "X", "Y", "Z"]) or (len(targets) == 1 and len(controls) == 0), \
-            "H, X, Y, Z must have exactly one target and no controls"
+            "Single-qubit gates must have exactly one target and no controls"
 
-        # Standard controlled gates
         (gateType not in ["CNOT", "CZ"]) or (len(targets) == 1 and len(controls) == 1), \
-            "CNOT and CZ must have exactly one control and one target"
+            "CNOT and CZ must have exactly one target and one control"
 
-        # SWAP
         (gateType != "SWAP") or (len(targets) == 2 and len(controls) == 0), \
             "SWAP must have exactly two targets and no controls"
 
-        # Controlled gates cannot use same qubit as control and target
-        (gateType not in ["CNOT", "CZ"]) or (controls[0] != targets[0]), \
-            "A control qubit cannot be equal to its target qubit"
+        # C4: control and target roles must be disjoint
+        all(t not in controls for t in targets), \
+            "C4 Violation: Control qubits and target qubits of a controlled gate must be disjoint"
 
 
 schema MeasureNode:
@@ -121,97 +122,68 @@ schema Flow:
 schema QuantumCircuit:
     name: str
     numQubits: int
-    ordering: "little_endian" | "big_endian"
+    ordering: "little" | "big"
 
     qubits: [Qubit]
-
     initialNode: InitialNode
     finalNode: FinalNode
 
     forkNodes?: [ForkNode] = []
     joinNodes?: [JoinNode] = []
-
     gates?: [GateNode] = []
     measures?: [MeasureNode] = []
     resets?: [ResetNode] = []
-
     classicalStores?: [ClassicalStore] = []
     flows?: [Flow] = []
 
     check:
-        # Basic circuit sanity
-        numQubits >= 1, "A circuit must have at least one qubit"
-        len(qubits) == numQubits, "numQubits must match the number of declared qubits"
+        numQubits >= 1, "A circuit must declare at least one qubit"
+        len(qubits) == numQubits, \
+            "numQubits must match the number of declared qubits"
 
-        # Uniqueness of qubits
-        len({q.id for q in qubits}) == len(qubits), "Qubit ids must be unique"
-        len({q.index for q in qubits}) == len(qubits), "Qubit indices must be unique"
-
-        # Uniqueness of node ids by category
-        len({g.id for g in gates}) == len(gates), "Gate ids must be unique"
-        len({m.id for m in measures}) == len(measures), "Measure ids must be unique"
-        len({r.id for r in resets}) == len(resets), "Reset ids must be unique"
-        len({f.id for f in forkNodes}) == len(forkNodes), "Fork node ids must be unique"
-        len({j.id for j in joinNodes}) == len(joinNodes), "Join node ids must be unique"
-
-        # Uniqueness of classical stores
+        # Resource uniqueness
+        len({q.id for q in qubits}) == len(qubits), \
+            "Qubit ids must be unique"
+        len({q.index for q in qubits}) == len(qubits), \
+            "Qubit indices must be unique"
         len({c.name for c in classicalStores}) == len(classicalStores), \
             "Classical store names must be unique"
 
-        # Initial/final node uniqueness
-        initialNode.id != finalNode.id, "Initial and final node ids must be different"
-
-        initialNode.id not in (
-            {g.id for g in gates} |
-            {m.id for m in measures} |
-            {r.id for r in resets} |
-            {f.id for f in forkNodes} |
-            {j.id for j in joinNodes}
-        ), "Initial node id must be unique within the circuit"
-
-        finalNode.id not in (
-            {g.id for g in gates} |
-            {m.id for m in measures} |
-            {r.id for r in resets} |
-            {f.id for f in forkNodes} |
-            {j.id for j in joinNodes}
-        ), "Final node id must be unique within the circuit"
-
-        # NEW: global uniqueness of all node ids across all categories
+        # Global uniqueness of executable node identifiers
         len(
             {initialNode.id, finalNode.id} |
             {g.id for g in gates} |
             {m.id for m in measures} |
             {r.id for r in resets} |
-            {f.id for f in forkNodes} |
-            {j.id for j in joinNodes}
-        ) == (
-            2 + len(gates) + len(measures) + len(resets) + len(forkNodes) + len(joinNodes)
-        ), "All node ids in the circuit must be globally unique"
+            {fk.id for fk in forkNodes} |
+            {jn.id for jn in joinNodes}
+        ) == (2 + len(gates) + len(measures) + len(resets) + len(forkNodes) + len(joinNodes)), \
+            "All node ids in the circuit must be globally unique"
 
-        # Gate references to declared qubits
+        # ----------------------------------------------------
+        # C5: Resource Locality
+        # ----------------------------------------------------
         all(t in {q.id for q in qubits} for g in gates for t in g.targets), \
-            "Every gate target must reference an existing qubit"
+            "C5 Violation: Gate targets must belong to the circuit"
 
         all(c in {q.id for q in qubits} for g in gates for c in g.controls), \
-            "Every gate control must reference an existing qubit"
+            "C5 Violation: Gate controls must belong to the circuit"
 
-        # Measure/reset references to declared qubits
         all(m.qubit in {q.id for q in qubits} for m in measures), \
-            "Every measurement must reference an existing qubit"
+            "C5 Violation: Measurements must reference qubits belonging to the circuit"
 
         all(r.qubit in {q.id for q in qubits} for r in resets), \
-            "Every reset must reference an existing qubit"
+            "C5 Violation: Resets must reference qubits belonging to the circuit"
 
-        # Measurement outputs must reference declared classical stores
         all(m.output in {c.name for c in classicalStores} for m in measures), \
-            "Every measurement output must reference an existing classical store"
+            "C5 Violation: Measurement outputs must belong to the circuit"
 
-        # Classical dependencies must reference declared classical stores
         all(d in {c.name for c in classicalStores} for g in gates for d in g.classicalDependsOn), \
-            "Every classical dependency of a gate must reference an existing classical store"
+            "C5 Violation: Classical dependencies must reference classical stores belonging to the circuit"
 
-        # Flow references must point to declared nodes
+        # ----------------------------------------------------
+        # C1 + C2: Flow Consistency and Node Existence
+        # ----------------------------------------------------
         all(
             f.source in (
                 {initialNode.id, finalNode.id} |
@@ -222,7 +194,7 @@ schema QuantumCircuit:
                 {jn.id for jn in joinNodes}
             )
             for f in flows
-        ), "Every flow source must reference an existing declared node"
+        ), "C2 Violation: Every flow source must reference an existing node"
 
         all(
             f.target in (
@@ -234,11 +206,18 @@ schema QuantumCircuit:
                 {jn.id for jn in joinNodes}
             )
             for f in flows
-        ), "Every flow target must reference an existing declared node"
+        ), "C2 Violation: Every flow target must reference an existing node"
 
-        # Basic control-flow anchoring
+        all(
+            f.source != finalNode.id and f.target != initialNode.id
+            for f in flows
+        ), "C1 Violation: Every flow edge must define a valid directed execution relation inside the circuit"
+
+        # ----------------------------------------------------
+        # C8: Control-Flow Anchoring
+        # ----------------------------------------------------
         any(f.source == initialNode.id for f in flows), \
-            "The circuit must have at least one flow leaving the initial node"
+            "C8 Violation: The circuit must contain an outgoing flow from the InitialNode"
 
         any(f.target == finalNode.id for f in flows), \
-            "The circuit must have at least one flow entering the final node"
+            "C8 Violation: The circuit must contain an incoming flow to the FinalNode"

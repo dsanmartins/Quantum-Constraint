@@ -1,96 +1,215 @@
-
 # Quantum Circuit Metamodel and Validation (KCL)
 
-This repository contains a model-driven representation of quantum circuits using KCL (K Configuration Language).
-It defines a metamodel, validation constraints, and example circuits for demonstrating structural and behavioral
-verification of quantum circuit models.
+This repository provides a **model-driven representation of quantum
+circuits** using **KCL (K Configuration Language)**.\
+It implements a domain-specific metamodel, a constraint-based validation
+layer, and example circuit models to demonstrate **structural and
+behavioral verification of quantum circuit designs**.
 
-## Repository Structure
+The implementation follows the approach presented in the paper:
 
-- `metamodel.k` — Defines the abstract syntax of the quantum circuit modeling language.
-- `constraints.k` — Contains validation rules ensuring semantic correctness of circuits.
-- `teleportation.k` — Example of a valid quantum teleportation circuit.
-- `teleportation_faulty.k` — Fault-injected circuits used to test validation rules.
+**"Towards a Constraint-Based Approach for Quantum Circuit Modeling."**
 
-## Overview
+------------------------------------------------------------------------
 
-The repository follows Model-Driven Engineering (MDE) principles:
+# Repository Structure
 
-1. **Metamodel**
-   Defines the elements of a quantum circuit such as qubits, gates, measurements, and control-flow nodes.
+-   `metamodel.k`\
+    Defines the **abstract syntax** of the quantum circuit modeling
+    language and implements **structural well-formedness constraints
+    (C1--C5, C8)**.
 
-2. **Constraints**
-   Specify semantic rules that valid circuits must satisfy (e.g., qubit reuse restrictions, classical control validity).
+-   `constraints.k`\
+    Implements **behavioral validation rules (C6--C7)** that regulate
+    the interaction between quantum operations and classical
+    information.
 
-3. **Example Models**
-   Demonstrate how circuits are represented and validated.
+-   `teleportation.k`\
+    A **valid model** of the quantum teleportation protocol used as a
+    reference circuit.
 
-## Metamodel (`metamodel.k`)
+-   `teleportation_faulty.k`\
+    A set of **fault-injected circuit models** used to test the
+    validation mechanism.
 
-The metamodel defines the structural components of quantum circuits:
+------------------------------------------------------------------------
 
-- Qubit
-- ClassicalStore
-- GateNode
-- MeasureNode
-- ResetNode
-- InitialNode
-- FinalNode
-- ForkNode
-- JoinNode
-- Flow
-- QuantumCircuit
+# Overview
 
-These elements represent both quantum operations and classical control structures.
+The repository follows **Model-Driven Engineering (MDE)** principles.
 
-## Constraints (`constraints.k`)
+Quantum circuits are represented as **models** that are validated before
+being translated into executable quantum programs.
 
-Validation rules ensure that circuits obey semantic restrictions.
+The approach separates three concerns:
 
-Example rules include:
+### 1. Metamodel
 
-- No reuse of a qubit after measurement without reset.
-- Ancilla qubits must be cleaned before reuse.
-- Parallel operations cannot act on the same qubit simultaneously.
-- Classical dependencies must reference valid measurement results.
+Defines the **structural elements** of a quantum circuit.
 
-## Example Circuit (`teleportation.k`)
+These include:
 
-Implements the quantum teleportation protocol:
+-   Qubit resources
+-   Classical registers
+-   Quantum gates
+-   Measurement operations
+-   Reset operations
+-   Control-flow nodes
+-   Execution flow relations
 
-- Preparation of an entangled Bell pair
-- Interaction with the source qubit
-- Measurement of control qubits
-- Conditional correction on the target qubit
+The metamodel specifies the **abstract syntax** of the modeling
+language.
 
-The circuit passes all validation rules.
+------------------------------------------------------------------------
 
-## Fault Injection (`teleportation_faulty.k`)
+### 2. Constraint-Based Validation
 
-Contains intentionally incorrect circuits used to validate constraint detection.
+Additional **well-formedness constraints** ensure that circuit models
+satisfy both structural and behavioral rules.
 
-Examples:
+The validation rules are divided into two groups:
 
-- Using a measured qubit without reset
-- Reusing ancilla qubits improperly
-- Invalid classical control dependencies
+#### Structural Constraints (implemented in `metamodel.k`)
 
-These models should fail validation.
+-   **C1 -- Flow Consistency**\
+    Each flow edge must connect nodes belonging to the same circuit.
 
-## Purpose
+-   **C2 -- Node Existence**\
+    All node identifiers referenced in flows must exist.
 
-This project demonstrates how model-driven engineering techniques can be used to:
+-   **C3 -- Qubit Binding**\
+    Every quantum operation must reference at least one qubit.
 
-- represent quantum circuits at a modeling level
-- separate syntax from semantic validation
-- detect modeling errors early
-- support experimentation with quantum software verification
+-   **C4 -- Control--Target Disjointness**\
+    A gate cannot use the same qubit as both control and target.
 
-## Possible Extensions
+-   **C5 -- Resource Locality**\
+    Qubits and classical stores referenced by operations must belong to
+    the circuit.
 
-Future improvements may include:
+-   **C8 -- Control-Flow Anchoring**\
+    Each circuit must contain exactly one `InitialNode` and one
+    `FinalNode`.
 
-- resource analysis for qubits
-- concurrency verification
-- hardware-aware constraints
-- circuit optimization checks
+------------------------------------------------------------------------
+
+#### Behavioral Constraints (implemented in `constraints.k`)
+
+-   **C6 -- Measurement Integrity**\
+    A measurement must reference a valid qubit and produce a valid
+    classical output.
+
+-   **C7 -- Classical Dependency Safety**\
+    Classically controlled gates must reference measurement results that
+    are **produced earlier in the circuit execution flow**.
+
+These constraints enforce **correct hybrid quantum--classical
+interactions**.
+
+------------------------------------------------------------------------
+
+# Metamodel (`metamodel.k`)
+
+The metamodel defines the structural components of quantum circuits.
+
+Core modeling elements include:
+
+-   `Qubit`
+-   `ClassicalStore`
+-   `GateNode`
+-   `MeasureNode`
+-   `ResetNode`
+-   `InitialNode`
+-   `FinalNode`
+-   `ForkNode`
+-   `JoinNode`
+-   `Flow`
+-   `QuantumCircuit`
+
+Together, these elements represent both:
+
+-   **quantum operations**
+-   **classical control flow**
+
+within a unified circuit model.
+
+------------------------------------------------------------------------
+
+# Constraints (`constraints.k`)
+
+The constraint layer provides **behavioral validation rules** evaluated
+by the KCL engine.
+
+These rules detect inconsistencies such as:
+
+-   invalid measurement definitions
+-   classical dependencies that are not produced by measurements
+-   classical dependencies that appear **after** the gate that uses them
+
+The validation process analyzes the circuit model and produces
+**diagnostic messages identifying violated constraints**.
+
+------------------------------------------------------------------------
+
+# Example Circuit (`teleportation.k`)
+
+The repository includes a model of the **quantum teleportation
+protocol**.
+
+The circuit contains:
+
+1.  Bell-pair generation between qubits
+2.  Interaction with the source qubit
+3.  Measurement of intermediate qubits
+4.  Classical communication
+5.  Conditional correction gates
+
+This model satisfies all constraints and therefore **passes validation
+successfully**.
+
+------------------------------------------------------------------------
+
+# Fault Injection (`teleportation_faulty.k`)
+
+To evaluate the validation mechanism, several **fault scenarios** are
+implemented.
+
+Each faulty circuit introduces a specific modeling error corresponding
+to one of the well-formedness constraints.
+
+Examples include:
+
+-   invalid flow connections
+-   references to undefined nodes
+-   gates without qubit bindings
+-   control--target conflicts
+-   invalid measurement outputs
+-   incorrect classical dependencies
+-   structural anchoring violations
+
+These faulty models are expected to **fail validation** and generate
+error reports.
+
+------------------------------------------------------------------------
+
+# Purpose
+
+This repository demonstrates how **model-driven engineering techniques**
+can improve the reliability of quantum software by:
+
+-   representing quantum circuits as structured models
+-   separating syntax from validation logic
+-   enabling automated constraint checking
+-   detecting design errors early in the development lifecycle
+
+------------------------------------------------------------------------
+
+# Possible Extensions
+
+Future extensions may include:
+
+-   hardware-aware validation rules
+-   qubit resource analysis
+-   connectivity constraints for specific devices
+-   circuit equivalence checking
+-   model-to-code transformations (e.g., OpenQASM or Qiskit generation)

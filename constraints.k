@@ -1,140 +1,114 @@
 # ============================================================
 # constraints.k
 # ------------------------------------------------------------
-# Higher-level behavioral / semantic validation rules for
-# quantum circuit models.
+# Behavioral validation rules for quantum circuit models.
 #
-# This file is separate from the metamodel on purpose.
-# It captures domain correctness properties that go beyond
-# abstract syntax and structural integrity.
+# This file is aligned with Table II of the paper and with the
+# structural/behavioral separation stated in Section IV-B:
+#   - C6 Measurement Integrity
+#   - C7 Classical Dependency Safety
+#
+# Structural constraints C1-C5 and C8 are defined in
+# metamodel.k.
 # ============================================================
 
 import .metamodel
 
-
-# ------------------------------------------------------------
-# Validation configuration
-# ------------------------------------------------------------
-
 schema ValidationConfig:
-    # If true, measured qubits may only be used again after reset.
-    enforceResetBeforeReuse?: bool = True
+    strictMeasurementChecks?: bool = True
+    strictClassicalDependencyChecks?: bool = True
 
-    # If true, ancilla/auxiliary qubits must not be reused after
-    # measurement unless reset.
-    enforceAncillaCleanup?: bool = True
-
-    # If true, lightweight parallel conflict checks are enabled.
-    enforceNoParallelConflicts?: bool = True
-
-
-# ------------------------------------------------------------
-# Validation wrapper
-# ------------------------------------------------------------
 
 schema CircuitValidation:
     circuit: metamodel.QuantumCircuit
     config?: ValidationConfig = ValidationConfig {}
 
+    # --------------------------------------------------------
+    # Derived views over the execution graph
+    # --------------------------------------------------------
+    allNodeIds = (
+        {circuit.initialNode.id, circuit.finalNode.id} |
+        {g.id for g in circuit.gates} |
+        {m.id for m in circuit.measures} |
+        {r.id for r in circuit.resets} |
+        {fk.id for fk in circuit.forkNodes} |
+        {jn.id for jn in circuit.joinNodes}
+    )
+
+    # Direct predecessor relation of a node
+    directPreds = {
+        n: {f.source for f in circuit.flows if f.target == n}
+        for n in allNodeIds
+    }
+
+    # Acyclic circuits let us unfold predecessor reachability up
+    # to the number of nodes. This gives a graph-based notion of
+    # "defined earlier in the circuit" for C7.
+    predDepth1 = {n: directPreds[n] for n in allNodeIds}
+    predDepth2 = {n: predDepth1[n] | {p2 for p1 in predDepth1[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth3 = {n: predDepth2[n] | {p2 for p1 in predDepth2[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth4 = {n: predDepth3[n] | {p2 for p1 in predDepth3[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth5 = {n: predDepth4[n] | {p2 for p1 in predDepth4[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth6 = {n: predDepth5[n] | {p2 for p1 in predDepth5[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth7 = {n: predDepth6[n] | {p2 for p1 in predDepth6[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth8 = {n: predDepth7[n] | {p2 for p1 in predDepth7[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth9 = {n: predDepth8[n] | {p2 for p1 in predDepth8[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth10 = {n: predDepth9[n] | {p2 for p1 in predDepth9[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth11 = {n: predDepth10[n] | {p2 for p1 in predDepth10[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth12 = {n: predDepth11[n] | {p2 for p1 in predDepth11[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth13 = {n: predDepth12[n] | {p2 for p1 in predDepth12[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth14 = {n: predDepth13[n] | {p2 for p1 in predDepth13[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth15 = {n: predDepth14[n] | {p2 for p1 in predDepth14[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+    predDepth16 = {n: predDepth15[n] | {p2 for p1 in predDepth15[n] for p2 in predDepth1[p1]} for n in allNodeIds}
+
+    # For the case-study circuits in the paper, 16 steps is more
+    # than enough to cover the full execution graph. If larger
+    # models are used later, this unfolding depth can be increased.
+    reachablePreds = predDepth16
+
+    producingMeasurementIds = {
+        c.name: {m.id for m in circuit.measures if m.output == c.name}
+        for c in circuit.classicalStores
+    }
+
     check:
         # ====================================================
-        # Behavioral Constraint B1:
-        # No reuse after measurement without reset
-        # ----------------------------------------------------
-        # Conservative approximation:
-        # if a qubit is measured, then either
-        #   (a) it is reset somewhere in the circuit, or
-        #   (b) it is not used again by any gate.
-        #
-        # This is intentionally lightweight and suitable for
-        # small case studies.
+        # C6: Measurement Integrity
+        # A measurement must target exactly one qubit and
+        # produce a classical output. Since MeasureNode has a
+        # single qubit field, here we enforce semantic validity:
+        #   (i) the measured qubit belongs to the circuit,
+        #   (ii) the output classical store belongs to the circuit.
         # ====================================================
-        (not config.enforceResetBeforeReuse) or all(
+        (not config.strictMeasurementChecks) or all(
             (
-                (m.qubit in {r.qubit for r in circuit.resets}) or
-                not any(m.qubit in (g.targets + g.controls) for g in circuit.gates)
+                m.qubit in {q.id for q in circuit.qubits} and
+                m.output in {c.name for c in circuit.classicalStores}
             )
             for m in circuit.measures
-        ), "A measured qubit must not be reused unless a reset is declared"
+        ), "C6 Violation: A measurement must target exactly one valid circuit qubit and produce a valid classical output"
 
         # ====================================================
-        # Behavioral Constraint B2:
-        # Ancilla / auxiliary cleanup
-        # ----------------------------------------------------
-        # If an ancilla or auxiliary qubit is measured, then
-        # either it is reset, or it must not be reused in gates.
+        # C7: Classical Dependency Safety
+        # A classically controlled gate must reference a
+        # measurement result that is:
+        #   (i) produced by some measurement in the circuit, and
+        #   (ii) produced earlier in the execution graph.
+        #
+        # Condition (ii) is approximated strongly through graph
+        # reachability: the measurement node producing the
+        # classical store must be a predecessor of the gate node.
+        # This matches the causal reading in the paper.
         # ====================================================
-        (not config.enforceAncillaCleanup) or all(
+        (not config.strictClassicalDependencyChecks) or all(
             (
-                (m.qubit in {r.qubit for r in circuit.resets}) or
-                not any(
-                    m.qubit in (g.targets + g.controls)
-                    for g in circuit.gates
+                d in {m.output for m in circuit.measures}
+            ) and (
+                any(
+                    mid in reachablePreds[g.id]
+                    for mid in producingMeasurementIds[d]
                 )
             )
-            for m in circuit.measures
-            if m.qubit in {
-                q.id for q in circuit.qubits
-                if q.kind in ["ancilla", "auxiliary"]
-            }
-        ), "Ancilla or auxiliary qubits must be reset before reuse"
-
-        # ====================================================
-        # Behavioral Constraint B3:
-        # Classical dependency must be produced by a measurement
-        # ----------------------------------------------------
-        # The metamodel already checks that the referenced
-        # classical store exists. This rule strengthens that by
-        # requiring the store to be produced by a measurement in
-        # the same circuit.
-        # ====================================================
-        all(
-            d in {m.output for m in circuit.measures}
             for g in circuit.gates
             for d in g.classicalDependsOn
-        ), "Every classical dependency must be produced by a measurement in the circuit"
-
-        # ====================================================
-        # Behavioral Constraint B4:
-        # Lightweight parallel conflict rule
-        # ----------------------------------------------------
-        # For gates directly reachable from the same fork node:
-        #
-        # - It is invalid if two parallel gates use the same qubit
-        #   and at least one of them is NOT classically controlled.
-        #
-        # - It is allowed if all overlapping uses on that qubit are
-        #   among classically controlled correction gates.
-        #
-        # This makes the rule compatible with teleportation, where
-        # X and Z corrections both act on q2 after a fork and are
-        # each controlled by classical measurement outcomes.
-        # ====================================================
-        (not config.enforceNoParallelConflicts) or all(
-            not any(
-                (
-                    g1.id != g2.id and
-                    len({q for q in (g1.targets + g1.controls) if q in (g2.targets + g2.controls)}) > 0 and
-                    (
-                        len(g1.classicalDependsOn) == 0 or
-                        len(g2.classicalDependsOn) == 0
-                    )
-                )
-                for g1 in [g for f in circuit.flows if f.source == fk.id for g in circuit.gates if g.id == f.target]
-                for g2 in [g for f in circuit.flows if f.source == fk.id for g in circuit.gates if g.id == f.target]
-            )
-            for fk in circuit.forkNodes
-        ), "Parallel branches from the same fork must not operate on the same qubit unless all overlapping gates are classically controlled"
-
-        # ====================================================
-        # Behavioral Constraint B5:
-        # Classically controlled correction shape
-        # ----------------------------------------------------
-        # If a gate has classical dependencies, then it should
-        # target exactly one qubit. This is a lightweight rule
-        # suitable for teleportation-style correction gates.
-        # ====================================================
-        all(
-            (len(g.classicalDependsOn) == 0) or (len(g.targets) == 1)
-            for g in circuit.gates
-        ), "A classically controlled correction gate must target exactly one qubit"
+        ), "C7 Violation: Classically controlled gates must reference measurement results defined earlier in the circuit execution flow"

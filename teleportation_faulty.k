@@ -2,112 +2,29 @@ import .metamodel
 import .constraints
 
 # ============================================================
-# Faulty Case 1: Reuse after measurement without reset
-# Violates C1
-# q0 is measured and later reused by gate g5, but no reset exists.
+# teleportation_faulty.k
+# ------------------------------------------------------------
+# Fault-injected variants of the teleportation circuit aligned
+# with the paper's constraint taxonomy (C1-C8).
+#
+# Each faulty scenario is defined as an independent mutated
+# model derived from the same base structure. The companion
+# validation object makes the intended failure explicit.
 # ============================================================
 
-faulty_reuse_after_measurement = metamodel.QuantumCircuit {
-    name = "FaultyReuseAfterMeasurement"
+# ------------------------------------------------------------
+# F1 — C1 Flow Consistency
+# Invalid execution relation: a flow starts at the FinalNode.
+# ------------------------------------------------------------
+teleportation_faulty_f1 = metamodel.QuantumCircuit {
+    name = "Teleportation_F1_C1"
     numQubits = 3
-    ordering = "little_endian"
+    ordering = "little"
 
     qubits = [
         metamodel.Qubit {id = "q0", index = 0, kind = "data"},
-        metamodel.Qubit {id = "q1", index = 1, kind = "auxiliary"},
-        metamodel.Qubit {id = "q2", index = 2, kind = "target"},
-    ]
-
-    initialNode = metamodel.InitialNode {id = "init"}
-    finalNode   = metamodel.FinalNode   {id = "final"}
-
-    classicalStores = [
-        metamodel.ClassicalStore {name = "c0"},
-    ]
-
-    gates = [
-        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q0"]},
-        metamodel.GateNode {id = "g5", gateType = "X", targets = ["q0"]},
-    ]
-
-    measures = [
-        metamodel.MeasureNode {id = "m1", qubit = "q0", basis = "Z", output = "c0"},
-    ]
-
-    flows = [
-        metamodel.Flow {source = "init", target = "g1"},
-        metamodel.Flow {source = "g1", target = "m1"},
-        metamodel.Flow {source = "m1", target = "g5"},
-        metamodel.Flow {source = "g5", target = "final"},
-    ]
-}
-
-validate_faulty_reuse_after_measurement = constraints.CircuitValidation {
-    circuit = faulty_reuse_after_measurement
-}
-
-
-# ============================================================
-# Faulty Case 2: Ancilla reuse without reset
-# Violates C2
-# q1 is auxiliary, measured, and later reused in a gate, but not reset.
-# ============================================================
-
-faulty_ancilla_cleanup = metamodel.QuantumCircuit {
-    name = "FaultyAncillaCleanup"
-    numQubits = 3
-    ordering = "little_endian"
-
-    qubits = [
-        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
-        metamodel.Qubit {id = "q1", index = 1, kind = "auxiliary"},
-        metamodel.Qubit {id = "q2", index = 2, kind = "target"},
-    ]
-
-    initialNode = metamodel.InitialNode {id = "init"}
-    finalNode   = metamodel.FinalNode   {id = "final"}
-
-    classicalStores = [
-        metamodel.ClassicalStore {name = "c1"},
-    ]
-
-    gates = [
-        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q1"]},
-        metamodel.GateNode {id = "g2", gateType = "X", targets = ["q1"]},
-    ]
-
-    measures = [
-        metamodel.MeasureNode {id = "m1", qubit = "q1", basis = "Z", output = "c1"},
-    ]
-
-    flows = [
-        metamodel.Flow {source = "init", target = "g1"},
-        metamodel.Flow {source = "g1", target = "m1"},
-        metamodel.Flow {source = "m1", target = "g2"},
-        metamodel.Flow {source = "g2", target = "final"},
-    ]
-}
-
-validate_faulty_ancilla_cleanup = constraints.CircuitValidation {
-    circuit = faulty_ancilla_cleanup
-}
-
-
-# ============================================================
-# Faulty Case 3: Classical dependency not produced by measurement
-# Violates C3
-# g5 depends on cX, but no measurement produces cX.
-# ============================================================
-
-faulty_classical_dependency = metamodel.QuantumCircuit {
-    name = "FaultyClassicalDependency"
-    numQubits = 3
-    ordering = "little_endian"
-
-    qubits = [
-        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
-        metamodel.Qubit {id = "q1", index = 1, kind = "auxiliary"},
-        metamodel.Qubit {id = "q2", index = 2, kind = "target"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
     ]
 
     initialNode = metamodel.InitialNode {id = "init"}
@@ -116,99 +33,178 @@ faulty_classical_dependency = metamodel.QuantumCircuit {
     classicalStores = [
         metamodel.ClassicalStore {name = "c0"},
         metamodel.ClassicalStore {name = "c1"},
-        metamodel.ClassicalStore {name = "cX"},
     ]
 
     gates = [
-        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q1"]},
-        metamodel.GateNode {id = "g5", gateType = "X", targets = ["q2"], classicalDependsOn = ["cX"]},
+        metamodel.GateNode {id = "g1", gateType = "H",    targets = ["q1"]},
+        metamodel.GateNode {id = "g2", gateType = "CNOT", targets = ["q2"], controls = ["q1"]},
     ]
 
     measures = [
         metamodel.MeasureNode {id = "m1", qubit = "q0", basis = "Z", output = "c0"},
-        metamodel.MeasureNode {id = "m2", qubit = "q1", basis = "Z", output = "c1"},
+    ]
+
+    flows = [
+        metamodel.Flow {source = "final", target = "g1"},
+        metamodel.Flow {source = "g1",    target = "g2"},
+        metamodel.Flow {source = "g2",    target = "m1"},
+        metamodel.Flow {source = "m1",    target = "final"},
+    ]
+}
+
+validation_f1 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f1
+}
+
+
+# ------------------------------------------------------------
+# F2 — C2 Node Existence
+# Undefined target node referenced by a flow.
+# ------------------------------------------------------------
+teleportation_faulty_f2 = metamodel.QuantumCircuit {
+    name = "Teleportation_F2_C2"
+    numQubits = 3
+    ordering = "little"
+
+    qubits = [
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
+    ]
+
+    initialNode = metamodel.InitialNode {id = "init"}
+    finalNode   = metamodel.FinalNode   {id = "final"}
+
+    gates = [
+        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q1"]},
     ]
 
     flows = [
         metamodel.Flow {source = "init", target = "g1"},
-        metamodel.Flow {source = "g1", target = "m1"},
-        metamodel.Flow {source = "m1", target = "m2"},
-        metamodel.Flow {source = "m2", target = "g5"},
-        metamodel.Flow {source = "g5", target = "final"},
+        metamodel.Flow {source = "g1",   target = "ghost_node"},
+        metamodel.Flow {source = "g1",   target = "final"},
     ]
 }
 
-validate_faulty_classical_dependency = constraints.CircuitValidation {
-    circuit = faulty_classical_dependency
+validation_f2 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f2
 }
 
 
-# ============================================================
-# Faulty Case 4: Parallel conflict after fork
-# Violates C4
-# Two gates directly reachable from the same fork both use q2.
-# ============================================================
-
-faulty_parallel_conflict = metamodel.QuantumCircuit {
-    name = "FaultyParallelConflict"
+# ------------------------------------------------------------
+# F3 — C3 Qubit Binding
+# Gate declared without targets or controls.
+# ------------------------------------------------------------
+teleportation_faulty_f3 = metamodel.QuantumCircuit {
+    name = "Teleportation_F3_C3"
     numQubits = 3
-    ordering = "little_endian"
+    ordering = "little"
 
     qubits = [
         metamodel.Qubit {id = "q0", index = 0, kind = "data"},
-        metamodel.Qubit {id = "q1", index = 1, kind = "auxiliary"},
-        metamodel.Qubit {id = "q2", index = 2, kind = "target"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
     ]
 
     initialNode = metamodel.InitialNode {id = "init"}
     finalNode   = metamodel.FinalNode   {id = "final"}
 
-    forkNodes = [
-        metamodel.ForkNode {id = "fork1"},
-    ]
-
-    classicalStores = [
-        metamodel.ClassicalStore {name = "c0"},
-    ]
-
     gates = [
-        metamodel.GateNode {id = "g1", gateType = "X", targets = ["q2"]},
-        metamodel.GateNode {id = "g2", gateType = "Z", targets = ["q2"]},
-    ]
-
-    measures = [
-        metamodel.MeasureNode {id = "m1", qubit = "q0", output = "c0"},
+        metamodel.GateNode {id = "g1", gateType = "Custom", targets = [], controls = []},
     ]
 
     flows = [
-        metamodel.Flow {source = "init", target = "fork1"},
-        metamodel.Flow {source = "fork1", target = "g1"},
-        metamodel.Flow {source = "fork1", target = "g2"},
-        metamodel.Flow {source = "g1", target = "final"},
-        metamodel.Flow {source = "g2", target = "final"},
+        metamodel.Flow {source = "init", target = "g1"},
+        metamodel.Flow {source = "g1",   target = "final"},
     ]
 }
 
-validate_faulty_parallel_conflict = constraints.CircuitValidation {
-    circuit = faulty_parallel_conflict
+validation_f3 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f3
 }
 
 
-# ============================================================
-# Faulty Case 5: Classically controlled gate with multiple targets
-# Violates C5
-# A classically dependent SWAP targets two qubits.
-# ============================================================
-
-faulty_classical_correction_shape = metamodel.QuantumCircuit {
-    name = "FaultyClassicalCorrectionShape"
+# ------------------------------------------------------------
+# F4 — C4 Control-Target Disjointness
+# Same qubit used as control and target in a controlled gate.
+# ------------------------------------------------------------
+teleportation_faulty_f4 = metamodel.QuantumCircuit {
+    name = "Teleportation_F4_C4"
     numQubits = 3
-    ordering = "little_endian"
+    ordering = "little"
 
     qubits = [
         metamodel.Qubit {id = "q0", index = 0, kind = "data"},
-        metamodel.Qubit {id = "q1", index = 1, kind = "auxiliary"},
-        metamodel.Qubit {id = "q2", index = 2, kind = "target"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
+    ]
+
+    initialNode = metamodel.InitialNode {id = "init"}
+    finalNode   = metamodel.FinalNode   {id = "final"}
+
+    gates = [
+        metamodel.GateNode {id = "g1", gateType = "CNOT", targets = ["q1"], controls = ["q1"]},
+    ]
+
+    flows = [
+        metamodel.Flow {source = "init", target = "g1"},
+        metamodel.Flow {source = "g1",   target = "final"},
+    ]
+}
+
+validation_f4 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f4
+}
+
+
+# ------------------------------------------------------------
+# F5 — C5 Resource Locality
+# Gate references a qubit that does not belong to the circuit.
+# ------------------------------------------------------------
+teleportation_faulty_f5 = metamodel.QuantumCircuit {
+    name = "Teleportation_F5_C5"
+    numQubits = 3
+    ordering = "little"
+
+    qubits = [
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
+    ]
+
+    initialNode = metamodel.InitialNode {id = "init"}
+    finalNode   = metamodel.FinalNode   {id = "final"}
+
+    gates = [
+        metamodel.GateNode {id = "g1", gateType = "X", targets = ["q9"]},
+    ]
+
+    flows = [
+        metamodel.Flow {source = "init", target = "g1"},
+        metamodel.Flow {source = "g1",   target = "final"},
+    ]
+}
+
+validation_f5 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f5
+}
+
+
+# ------------------------------------------------------------
+# F6 — C6 Measurement Integrity
+# Measurement output does not correspond to a valid classical
+# store in the circuit. Under the current metamodel, this also
+# triggers C5 because output locality is structural.
+# ------------------------------------------------------------
+teleportation_faulty_f6 = metamodel.QuantumCircuit {
+    name = "Teleportation_F6_C6"
+    numQubits = 3
+    ordering = "little"
+
+    qubits = [
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
     ]
 
     initialNode = metamodel.InitialNode {id = "init"}
@@ -218,63 +214,96 @@ faulty_classical_correction_shape = metamodel.QuantumCircuit {
         metamodel.ClassicalStore {name = "c0"},
     ]
 
-    gates = [
-        metamodel.GateNode {
-            id = "g1",
-            gateType = "SWAP",
-            targets = ["q1", "q2"],
-            classicalDependsOn = ["c0"]
-        },
-    ]
-
     measures = [
-        metamodel.MeasureNode {id = "m1", qubit = "q0", output = "c0"},
+        metamodel.MeasureNode {id = "m1", qubit = "q0", basis = "Z", output = "cX"},
     ]
 
     flows = [
         metamodel.Flow {source = "init", target = "m1"},
-        metamodel.Flow {source = "m1", target = "g1"},
-        metamodel.Flow {source = "g1", target = "final"},
+        metamodel.Flow {source = "m1",   target = "final"},
     ]
 }
 
-validate_faulty_classical_correction_shape = constraints.CircuitValidation {
-    circuit = faulty_classical_correction_shape
+validation_f6 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f6
 }
 
 
-# ============================================================
-# Faulty Case 6: Multiple Initial Nodes
-# Violates C8
-# The circuit violates Flow Anchoring by defining two entry points.
-# ============================================================
-
-faulty_multiple_initial_nodes = metamodel.QuantumCircuit {
-    name = "FaultyMultipleInitialNodes"
-    numQubits = 1
+# ------------------------------------------------------------
+# F7 — C7 Classical Dependency Safety
+# Classically controlled gate depends on an existing classical
+# store that is never produced by any preceding measurement.
+# ------------------------------------------------------------
+teleportation_faulty_f7 = metamodel.QuantumCircuit {
+    name = "Teleportation_F7_C7"
+    numQubits = 3
+    ordering = "little"
 
     qubits = [
-        metamodel.Qubit {id = "q0", index = 0, kind = "data"}
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
     ]
 
-    # Violation: C8 requires exactly one InitialNode.
-    initialNode = [
-        metamodel.InitialNode {id = "init1"},
-        metamodel.InitialNode {id = "init2"}
+    initialNode = metamodel.InitialNode {id = "init"}
+    finalNode   = metamodel.FinalNode   {id = "final"}
+
+    classicalStores = [
+        metamodel.ClassicalStore {name = "c0"},
+        metamodel.ClassicalStore {name = "c1"},
     ]
-    finalNode = metamodel.FinalNode {id = "final"}
 
     gates = [
-        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q0"]}
+        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q1"]},
+        metamodel.GateNode {id = "g2", gateType = "X", targets = ["q2"], classicalDependsOn = ["c1"]},
+    ]
+
+    measures = [
+        metamodel.MeasureNode {id = "m1", qubit = "q0", basis = "Z", output = "c0"},
     ]
 
     flows = [
-        metamodel.Flow {source = "init1", target = "g1"},
-        metamodel.Flow {source = "init2", target = "g1"},
-        metamodel.Flow {source = "g1", target = "final"}
+        metamodel.Flow {source = "init", target = "g1"},
+        metamodel.Flow {source = "g1",   target = "m1"},
+        metamodel.Flow {source = "m1",   target = "g2"},
+        metamodel.Flow {source = "g2",   target = "final"},
     ]
 }
 
-validate_faulty_multiple_initial_nodes = constraints.CircuitValidation {
-    circuit = faulty_multiple_initial_nodes
+validation_f7 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f7
+}
+
+
+# ------------------------------------------------------------
+# F8 — C8 Control-Flow Anchoring
+# No incoming flow reaches the FinalNode.
+# ------------------------------------------------------------
+teleportation_faulty_f8 = metamodel.QuantumCircuit {
+    name = "Teleportation_F8_C8"
+    numQubits = 3
+    ordering = "little"
+
+    qubits = [
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"},
+        metamodel.Qubit {id = "q1", index = 1, kind = "ancilla"},
+        metamodel.Qubit {id = "q2", index = 2, kind = "data"},
+    ]
+
+    initialNode = metamodel.InitialNode {id = "init"}
+    finalNode   = metamodel.FinalNode   {id = "final"}
+
+    gates = [
+        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q1"]},
+        metamodel.GateNode {id = "g2", gateType = "X", targets = ["q2"]},
+    ]
+
+    flows = [
+        metamodel.Flow {source = "init", target = "g1"},
+        metamodel.Flow {source = "g1",   target = "g2"},
+    ]
+}
+
+validation_f8 = constraints.CircuitValidation {
+    circuit = teleportation_faulty_f8
 }
