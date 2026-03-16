@@ -3,7 +3,7 @@ import .constraints
 
 # ============================================================
 # Faulty Case 1: Reuse after measurement without reset
-# Violates B1
+# Violates C1
 # q0 is measured and later reused by gate g5, but no reset exists.
 # ============================================================
 
@@ -49,7 +49,7 @@ validate_faulty_reuse_after_measurement = constraints.CircuitValidation {
 
 # ============================================================
 # Faulty Case 2: Ancilla reuse without reset
-# Violates B2
+# Violates C2
 # q1 is auxiliary, measured, and later reused in a gate, but not reset.
 # ============================================================
 
@@ -95,7 +95,7 @@ validate_faulty_ancilla_cleanup = constraints.CircuitValidation {
 
 # ============================================================
 # Faulty Case 3: Classical dependency not produced by measurement
-# Violates B3
+# Violates C3
 # g5 depends on cX, but no measurement produces cX.
 # ============================================================
 
@@ -145,7 +145,7 @@ validate_faulty_classical_dependency = constraints.CircuitValidation {
 
 # ============================================================
 # Faulty Case 4: Parallel conflict after fork
-# Violates B4
+# Violates C4
 # Two gates directly reachable from the same fork both use q2.
 # ============================================================
 
@@ -196,7 +196,7 @@ validate_faulty_parallel_conflict = constraints.CircuitValidation {
 
 # ============================================================
 # Faulty Case 5: Classically controlled gate with multiple targets
-# Violates B5
+# Violates C5
 # A classically dependent SWAP targets two qubits.
 # ============================================================
 
@@ -240,4 +240,41 @@ faulty_classical_correction_shape = metamodel.QuantumCircuit {
 
 validate_faulty_classical_correction_shape = constraints.CircuitValidation {
     circuit = faulty_classical_correction_shape
+}
+
+
+# ============================================================
+# Faulty Case 6: Multiple Initial Nodes
+# Violates C8
+# The circuit violates Flow Anchoring by defining two entry points.
+# ============================================================
+
+faulty_multiple_initial_nodes = metamodel.QuantumCircuit {
+    name = "FaultyMultipleInitialNodes"
+    numQubits = 1
+
+    qubits = [
+        metamodel.Qubit {id = "q0", index = 0, kind = "data"}
+    ]
+
+    # Violation: C8 requires exactly one InitialNode.
+    initialNode = [
+        metamodel.InitialNode {id = "init1"},
+        metamodel.InitialNode {id = "init2"}
+    ]
+    finalNode = metamodel.FinalNode {id = "final"}
+
+    gates = [
+        metamodel.GateNode {id = "g1", gateType = "H", targets = ["q0"]}
+    ]
+
+    flows = [
+        metamodel.Flow {source = "init1", target = "g1"},
+        metamodel.Flow {source = "init2", target = "g1"},
+        metamodel.Flow {source = "g1", target = "final"}
+    ]
+}
+
+validate_faulty_multiple_initial_nodes = constraints.CircuitValidation {
+    circuit = faulty_multiple_initial_nodes
 }
